@@ -80,56 +80,37 @@ class Chromosome(BaseModel):
 
 
 def euclidean_distance_vectorized(chromosome, df_subset):
-    """
-    Calculate euclidean distance between a chromosome and multiple rows in a dataframe at once
-    using vectorized operations.
-    """
     distances = np.zeros(len(df_subset))
 
-    # Process discrete features (vectorized)
     for feature in discrete:
-        # Create a boolean mask where values don't match
         not_matching = df_subset[feature] != chromosome.discrete[feature]
         distances += not_matching.astype(float)
 
-    # Process boolean features (vectorized)
     for feature in boolean:
         not_matching = df_subset[feature].astype(int) != chromosome.boolean[feature]
         distances += not_matching.astype(float)
 
-    # Process continuous features (vectorized)
     for feature in continuous:
         min_val, max_val = continuous_min_max[feature]
         range_val = max_val - min_val if max_val > min_val else 1
 
-        # Get chromosome's average value for this feature
         chrom_val = sum(chromosome.continuous[feature]) / 2
 
-        # Normalize both the chromosome and dataframe values
         norm_chrom_val = (chrom_val - min_val) / range_val
         norm_df_vals = (df_subset[feature] - min_val) / range_val
 
-        # Add squared differences to the distance
         distances += (norm_chrom_val - norm_df_vals) ** 2
 
-    # Take square root to get Euclidean distance
     return np.sqrt(distances)
 
 
-def check_chromosome_vectorized(chromosome: Chromosome, df: pd.DataFrame, threshold=2.0):
-    """
-    Vectorized implementation of check_chromosome that evaluates a chromosome against
-    the entire dataset at once.
-    """
-    # Split dataframe by label
+def check_chromosome_vectorized(chromosome: Chromosome, df: pd.DataFrame, threshold=0.5):
     same_label_df = df[df["label"] == chromosome.label]
     other_label_df = df[df["label"] != chromosome.label]
 
-    # Calculate distances for all rows at once
     same_label_distances = euclidean_distance_vectorized(chromosome, same_label_df)
     other_label_distances = euclidean_distance_vectorized(chromosome, other_label_df)
 
-    # Count matches using boolean masks
     true_positives = np.sum(same_label_distances <= threshold)
     false_negatives = len(same_label_df) - true_positives
 
@@ -152,12 +133,10 @@ def fitness_fun_vectorized(chromosome: Chromosome, df: pd.DataFrame) -> float:
 
 
 def mutate(chromosome: Chromosome) -> Chromosome:
-    # Randomly flip one boolean feature
     if random.random() < 0.5:
         random_boolean_feature = random.choice(boolean)
         chromosome.boolean[random_boolean_feature] ^= 1
 
-    # Randomly change one discrete feature value to another valid one
     else:
         random_discrete_feature = random.choice(discrete)
         valid_values = list(discrete_values[random_discrete_feature])
@@ -169,7 +148,6 @@ def mutate(chromosome: Chromosome) -> Chromosome:
 
 
 def crossover(chromosome1: Chromosome, chromosome2: Chromosome) -> tuple[Chromosome, Chromosome]:
-    # Generate new offspring by swapping half of the features between two chromosomes
     offspring1 = chromosome1.model_copy(deep=True)
     offspring2 = chromosome2.model_copy(deep=True)
 
@@ -184,29 +162,33 @@ def crossover(chromosome1: Chromosome, chromosome2: Chromosome) -> tuple[Chromos
 
 
 def evolve(df: pd.DataFrame, population_size=100, iterations=100, mutation_rate=0.01):
-    # Create initial population of random chromosomes
-    population = [Chromosome.generate_random(label=random.choice(labels)) for _ in range(population_size)]
+    population = [Chromosome.generate_random(label="smurf") for _ in range(population_size)]
 
     for i in range(iterations):
         print(f"Iteration {i + 1}/{iterations}")
 
-        # Calculate fitness of each chromosome
         fitness = [fitness_fun_vectorized(chrom, df) for chrom in population]
         print(fitness)
 
-        # Select the most fit half of the population for breeding and discard the rest
-        most_fit_indices = sorted(range(len(fitness)), key=lambda i: fitness[i], reverse=True)[:population_size // 2]
+        # Select the 30 most fit chromosomes for breeding and discard the rest
+        most_fit_indices = sorted(range(len(fitness)), key=lambda i: fitness[i], reverse=True)[:30]
         population = [population[index] for index in most_fit_indices]
 
-        # Perform mutation and crossover to generate next generation
+        # Perform crossover
         next_generation = []
         while len(next_generation) < population_size:
+            parent1, parent2 = random.choices(population, k=2)
+            offspring1, offspring2 = crossover(parent1, parent2)
+            next_generation.extend([offspring1, offspring2])
+
+            # Perform mutation
+        for i in range(len(next_generation)):
             if random.random() < mutation_rate:
-                next_generation.append(mutate(random.choice(population)))
-            else:
-                parent1, parent2 = random.choices(population, k=2)
-                offspring1, offspring2 = crossover(parent1, parent2)
-                next_generation.extend([offspring1, offspring2])
+                next_generation[i] = mutate(next_generation[i])
+
+        # Fill the rest of the population up to size with new random chromosomes
+        while len(next_generation) < population_size:
+            next_generation.append(Chromosome.generate_random(label="smurf"))
 
         population = next_generation
 
