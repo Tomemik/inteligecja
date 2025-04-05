@@ -132,9 +132,17 @@ def check_chromosome_vectorized(chromosome: Chromosome, df: pd.DataFrame, thresh
 
 def fitness_fun_vectorized(chromosome: Chromosome, df: pd.DataFrame) -> float:
     measures = check_chromosome_vectorized(chromosome, df)
-    correct_predictions = measures["TRUE_POSITIVE"] + measures["TRUE_NEGATIVE"]
-    total_predictions = sum(measures.values())
-    return correct_predictions / total_predictions if total_predictions > 0 else 0
+    try:
+        tp_rate = measures["TRUE_POSITIVE"] / (measures["TRUE_POSITIVE"] + measures["FALSE_NEGATIVE"])
+    except ZeroDivisionError:
+        tp_rate = 0
+
+    try:
+        tn_rate = measures["TRUE_NEGATIVE"] / (measures["TRUE_NEGATIVE"] + measures["FALSE_POSITIVE"])
+    except ZeroDivisionError:
+        tn_rate = 0
+
+    return (tp_rate + tn_rate) / 2 if (tp_rate + tn_rate) > 0 else 0
 
 
 def mutate(chromosome: Chromosome) -> Chromosome:
@@ -223,7 +231,7 @@ iterations = 20
 population_size = 100
 mutation_rate = 0.05
 
-final_population, _ = evolve(train_df,  population_size, iterations, mutation_rate, "neptune", 5, False)
+final_population, _ = evolve(train_df,  population_size, iterations, mutation_rate, "smurf", 5, False)
 
 best_chromosome, best_chromosome_fitness = find_best_chromosome(final_population, train_df)
 print(f"Best chromosome fitness: {best_chromosome_fitness}")
