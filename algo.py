@@ -200,6 +200,19 @@ def evolve(df: pd.DataFrame, population_size=100, iterations=100, mutation_rate=
         else:
             stagnation_counter = 0
 
+        most_fit_indices = sorted(range(len(fitness)), key=lambda i: fitness[i], reverse=True)[
+                           :int(0.3 * population_size)]
+        best_fitness_scores.append(fitness[most_fit_indices[0]])
+        best_fitness = fitness[most_fit_indices[0]]
+        print(best_fitness_scores)
+
+        if i > 0 and best_fitness == best_fitness_scores[-2]:
+            stagnation_counter += 1
+            if stagnation_counter >= stagnation:
+                break
+        else:
+            stagnation_counter = 0
+
         population = [population[index] for index in most_fit_indices]
 
         next_generation = []
