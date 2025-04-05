@@ -32,35 +32,40 @@ class Chromosome(BaseModel):
     label: str
 
     @classmethod
-    def generate_random(cls, label: str) -> "Chromosome":
-        label_df = train_df[train_df["label"] == label]
+    def generate_random(cls, label: str, full_random: bool = False) -> "Chromosome":
+        if full_random:
+            discrete_dict = {feature: random.choice(train_df[feature].unique()) for feature in discrete}
+            boolean_dict = {feature: random.choice(train_df[feature].unique()) for feature in boolean}
+            continuous_dict = {}
+            for feature in continuous:
+                min_val = train_df[feature].min()
+                max_val = train_df[feature].max()
 
-        discrete_dict = {}
-        for feature in discrete:
-            feature_values = list(set(label_df[feature]))
-            discrete_dict[feature] = random.choice(feature_values)
-
-        boolean_dict = {}
-        for feature in boolean:
-            feature_values = list(set(label_df[feature].astype(int)))
-            boolean_dict[feature] = random.choice(feature_values)
-
-        continuous_dict = {}
-        for feature in continuous:
-            min_val = label_df[feature].min()
-            max_val = label_df[feature].max()
-
-            if min_val == max_val:
-                continuous_dict[feature] = (min_val, min_val)
-            else:
                 val_0 = random.uniform(min_val, max_val)
                 val_1 = random.uniform(min_val, max_val)
-                if val_0 < val_1:
-                    new_values = (val_0, val_1)
-                else:
-                    new_values = (val_1, val_0)
-                continuous_dict[feature] = new_values
+                continuous_dict[feature] = (val_0, val_1) if val_0 < val_1 else (val_1, val_0)
 
+        else:
+            label_df = train_df[train_df["label"] == label]
+
+            discrete_dict = {}
+            for feature in discrete:
+                feature_values = list(set(label_df[feature]))
+                discrete_dict[feature] = random.choice(feature_values)
+
+            boolean_dict = {}
+            for feature in boolean:
+                feature_values = list(set(label_df[feature].astype(int)))
+                boolean_dict[feature] = random.choice(feature_values)
+
+            continuous_dict = {}
+            for feature in continuous:
+                min_val = label_df[feature].min()
+                max_val = label_df[feature].max()
+
+                val_0 = random.uniform(min_val, max_val)
+                val_1 = random.uniform(min_val, max_val)
+                continuous_dict[feature] = (val_0, val_1) if val_0 < val_1 else (val_1, val_0)
 
         return cls(discrete=discrete_dict, boolean=boolean_dict, continuous=continuous_dict, label=label)
 
@@ -104,7 +109,7 @@ def euclidean_distance_vectorized(chromosome, df_subset):
     return np.sqrt(distances)
 
 
-def check_chromosome_vectorized(chromosome: Chromosome, df: pd.DataFrame, threshold=0.5):
+def check_chromosome_vectorized(chromosome: Chromosome, df: pd.DataFrame, threshold=2):
     same_label_df = df[df["label"] == chromosome.label]
     other_label_df = df[df["label"] != chromosome.label]
 
@@ -161,8 +166,10 @@ def crossover(chromosome1: Chromosome, chromosome2: Chromosome) -> tuple[Chromos
     return offspring1, offspring2
 
 
-def evolve(df: pd.DataFrame, population_size=100, iterations=100, mutation_rate=0.01):
-    population = [Chromosome.generate_random(label="smurf") for _ in range(population_size)]
+def evolve(df: pd.DataFrame, population_size=100, iterations=100, mutation_rate=0.01, label="normal", stagnation=5, elitism=True, full_random=False):
+    population = [Chromosome.generate_random(label, full_random) for _ in range(population_size)]
+    best_fitness_scores = []
+    stagnation_counter = 0
 
     for i in range(iterations):
         print(f"Iteration {i + 1}/{iterations}")
@@ -170,39 +177,55 @@ def evolve(df: pd.DataFrame, population_size=100, iterations=100, mutation_rate=
         fitness = [fitness_fun_vectorized(chrom, df) for chrom in population]
         print(fitness)
 
-        # Select the 30 most fit chromosomes for breeding and discard the rest
-        most_fit_indices = sorted(range(len(fitness)), key=lambda i: fitness[i], reverse=True)[:30]
+        most_fit_indices = sorted(range(len(fitness)), key=lambda i: fitness[i], reverse=True)[
+                           :int(0.3 * population_size)]
+        best_fitness_scores.append(fitness[most_fit_indices[0]])
+        best_fitness = fitness[most_fit_indices[0]]
+        print(best_fitness_scores)
+
+        if i > 0 and best_fitness == best_fitness_scores[-2]:
+            stagnation_counter += 1
+            if stagnation_counter >= stagnation:
+                break
+        else:
+            stagnation_counter = 0
+
         population = [population[index] for index in most_fit_indices]
 
-        # Perform crossover
         next_generation = []
-        while len(next_generation) < population_size:
+        while len(next_generation) < int(0.35 * population_size):
             parent1, parent2 = random.choices(population, k=2)
             offspring1, offspring2 = crossover(parent1, parent2)
             next_generation.extend([offspring1, offspring2])
 
-            # Perform mutation
         for i in range(len(next_generation)):
             if random.random() < mutation_rate:
                 next_generation[i] = mutate(next_generation[i])
 
-        # Fill the rest of the population up to size with new random chromosomes
+        if elitism:
+            next_generation.extend(population[:int(0.05 * population_size)])
+
         while len(next_generation) < population_size:
-            next_generation.append(Chromosome.generate_random(label="smurf"))
+            next_generation.append(Chromosome.generate_random(label, full_random))
 
         population = next_generation
 
-    return population
+    return population, best_fitness_scores
 
 
-iterations = 10
+def find_best_chromosome(population, df):
+    fitness_scores = [fitness_fun_vectorized(chromosome, df) for chromosome in population]
+    best_index = fitness_scores.index(max(fitness_scores))
+    return population[best_index], fitness_scores[best_index]
+
+
+iterations = 20
 population_size = 100
 mutation_rate = 0.05
 
-final_population = evolve(train_df, population_size, iterations, mutation_rate)
+final_population, _ = evolve(train_df,  population_size, iterations, mutation_rate, "neptune", 5, False)
 
-best_chromosome = final_population[0]
-best_chromosome_fitness = fitness_fun_vectorized(best_chromosome, train_df)
+best_chromosome, best_chromosome_fitness = find_best_chromosome(final_population, train_df)
 print(f"Best chromosome fitness: {best_chromosome_fitness}")
 
 test_fitnesses = [fitness_fun_vectorized(chromosome, test_df) for chromosome in final_population]
