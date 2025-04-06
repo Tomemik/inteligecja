@@ -185,13 +185,12 @@ def evolve(df: pd.DataFrame, population_size=100, iterations=100, mutation_rate=
         print(f"Iteration {i + 1}/{iterations}")
 
         fitness = [fitness_fun_vectorized(chrom, df) for chrom in population]
-        # print(fitness)
 
         most_fit_indices = sorted(range(len(fitness)), key=lambda i: fitness[i], reverse=True)[
                            :int(0.3 * population_size)]
         best_fitness_scores.append(fitness[most_fit_indices[0]])
         best_fitness = fitness[most_fit_indices[0]]
-        # print(best_fitness_scores)
+        print(best_fitness_scores, flush=True)
 
         if i > 0 and best_fitness == best_fitness_scores[-2]:
             stagnation_counter += 1
@@ -229,25 +228,6 @@ def find_best_chromosome(population, df):
     return population[best_index], fitness_scores[best_index]
 
 
-# iterations = 20
-# population_size = 100
-# mutation_rate = 0.05
-#
-# final_population, _ = evolve(train_df,  population_size, iterations, mutation_rate, "smurf", 5, False)
-#
-# best_chromosome, best_chromosome_fitness = find_best_chromosome(final_population, train_df)
-# print(f"Best chromosome fitness: {best_chromosome_fitness}")
-#
-# test_fitnesses = [fitness_fun_vectorized(chromosome, test_df) for chromosome in final_population]
-# test_max_fitness = max(test_fitnesses)
-# print(f"Maximum fitness on test set: {test_max_fitness}")
-#
-# for i in final_population:
-#     print(f"Fitness: {fitness_fun_vectorized(i, train_df)}")
-#     print(f"label: {i.label}")
-#     print(f"chromosome: {i.get_expression()}")
-
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Genetic algorithm for KDD99 dataset.")
 
@@ -256,9 +236,8 @@ if __name__ == "__main__":
     parser.add_argument("--mutation_rate", type=float, default=0.05, help="Mutation rate")
     parser.add_argument("--label", type=str, default="smurf", help="Label for which to generate chromosomes")
     parser.add_argument("--stagnation", type=int, default=5, help="Stagnation limit (early stopping)")
-    parser.add_argument("--elitism", action="store_true", help="Enable elitism in the evolution")
-    parser.add_argument("--full_random", action="store_true", help="Use full random generation instead of label-based")
-
+    parser.add_argument("--elitism", type=int, default=1, help="Enable elitism in the evolution")
+    parser.add_argument("--full_random", type=int, default=0, help="Use full random generation instead of label-based")
     args = parser.parse_args()
 
     final_population, best_fitness_scores = evolve(
@@ -268,11 +247,9 @@ if __name__ == "__main__":
         mutation_rate=args.mutation_rate,
         label=args.label,
         stagnation=args.stagnation,
-        elitism=args.elitism,
-        full_random=args.full_random
+        elitism=bool(args.elitism),
+        full_random=bool(args.full_random)
     )
-
-    print(f"Best fitness score: {best_fitness_scores}")
 
     best_chromosome, best_chromosome_fitness = find_best_chromosome(final_population, train_df)
     print(f"Best chromosome fitness: {best_chromosome_fitness}")
@@ -280,9 +257,3 @@ if __name__ == "__main__":
     test_fitnesses = [fitness_fun_vectorized(chromosome, test_df) for chromosome in final_population]
     test_max_fitness = max(test_fitnesses)
     print(f"Maximum fitness on test set: {test_max_fitness}")
-
-    # for i in final_population:
-    #     print(f"Fitness: {fitness_fun_vectorized(i, train_df)}")
-    #     print(f"label: {i.label}")
-    #     print(f"chromosome: {i.get_expression()}")
-
